@@ -37,7 +37,7 @@ import java.util.concurrent.Executors
 
 class BluetoothCoreAndroidPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
     ActivityResultListener, RequestPermissionsResultListener {
-    private val NAMESPACE = "dev.lightpod.bluetooth_core_android";
+    private val namespace = "dev.lightpod.bluetooth_core_android"
 
     private lateinit var channel: MethodChannel
     private var activity: Activity? = null
@@ -50,21 +50,21 @@ class BluetoothCoreAndroidPlugin : FlutterPlugin, MethodCallHandler, ActivityAwa
     private var bluetoothDiscoverySink: EventSink? = null
 
     private var deviceFoundEvent: EventChannel? = null
-    private var deviceFoundSink: EventSink? = null;
+    private var deviceFoundSink: EventSink? = null
 
-    private var bluetoothAdapter: BluetoothAdapter? = null;
+    private var bluetoothAdapter: BluetoothAdapter? = null
 
-    private val permissionRequestManager = RequestManager<Result>();
+    private val permissionRequestManager = RequestManager<Result>()
     private val activityRequestManager =
-        RequestManager<(requestCode: Int, resultCode: Int, data: Intent?) -> Boolean>();
+        RequestManager<(requestCode: Int, resultCode: Int, data: Intent?) -> Boolean>()
 
     private val rfcommSockets = ConcurrentHashMap<String, BluetoothSocket>()
 
     override fun onAttachedToEngine(flutterPluginBinding: FlutterPlugin.FlutterPluginBinding) {
-        channel = MethodChannel(flutterPluginBinding.binaryMessenger, NAMESPACE)
+        channel = MethodChannel(flutterPluginBinding.binaryMessenger, namespace)
         channel.setMethodCallHandler(this)
 
-        val messenger = flutterPluginBinding.binaryMessenger;
+        val messenger = flutterPluginBinding.binaryMessenger
         val bluetoothManager =
             flutterPluginBinding.applicationContext.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
         bluetoothAdapter = bluetoothManager.adapter
@@ -74,43 +74,43 @@ class BluetoothCoreAndroidPlugin : FlutterPlugin, MethodCallHandler, ActivityAwa
     }
 
     private fun initEvents(messenger: BinaryMessenger) {
-        bluetoothStateEvent = EventChannel(messenger, "$NAMESPACE/bluetooth_state_event")
+        bluetoothStateEvent = EventChannel(messenger, "$namespace/bluetooth_state_event")
         bluetoothStateEvent!!.setStreamHandler(object : EventChannel.StreamHandler {
             override fun onListen(arguments: Any?, events: EventSink?) {
-                bluetoothStateSink = events;
+                bluetoothStateSink = events
             }
 
             override fun onCancel(arguments: Any?) {
-                bluetoothStateSink = null;
+                bluetoothStateSink = null
             }
         })
 
-        bluetoothDiscoveryEvent = EventChannel(messenger, "$NAMESPACE/bluetooth_discovery_event")
+        bluetoothDiscoveryEvent = EventChannel(messenger, "$namespace/bluetooth_discovery_event")
         bluetoothDiscoveryEvent!!.setStreamHandler(object : EventChannel.StreamHandler {
             override fun onListen(arguments: Any?, events: EventSink?) {
-                bluetoothDiscoverySink = events;
+                bluetoothDiscoverySink = events
             }
 
             override fun onCancel(arguments: Any?) {
-                bluetoothDiscoverySink = null;
+                bluetoothDiscoverySink = null
             }
         })
 
-        deviceFoundEvent = EventChannel(messenger, "$NAMESPACE/found_device_event")
+        deviceFoundEvent = EventChannel(messenger, "$namespace/found_device_event")
         deviceFoundEvent!!.setStreamHandler(object : EventChannel.StreamHandler {
             override fun onListen(arguments: Any?, events: EventSink?) {
-                deviceFoundSink = events;
+                deviceFoundSink = events
             }
 
             override fun onCancel(arguments: Any?) {
-                deviceFoundSink = null;
+                deviceFoundSink = null
             }
         })
     }
 
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         channel.setMethodCallHandler(null)
-        activity?.unregisterReceiver(bluetoothBroadcastReceiver);
+        activity?.unregisterReceiver(bluetoothBroadcastReceiver)
         bluetoothStateEvent?.setStreamHandler(null)
         deviceFoundEvent?.setStreamHandler(null)
     }
@@ -120,42 +120,42 @@ class BluetoothCoreAndroidPlugin : FlutterPlugin, MethodCallHandler, ActivityAwa
 
         val filter = IntentFilter().apply {
             // Adapter Events
-            // BluetoothAdapter.ACTION_REQUEST_ENABLE;
-            // BluetoothAdapter.ACTION_SCAN_MODE_CHANGED;
-            // BluetoothAdapter.ACTION_LOCAL_NAME_CHANGED;
-            addAction(BluetoothAdapter.ACTION_STATE_CHANGED);
-            addAction(BluetoothAdapter.ACTION_DISCOVERY_STARTED);
-            addAction(BluetoothAdapter.ACTION_DISCOVERY_FINISHED);
+            // BluetoothAdapter.ACTION_REQUEST_ENABLE
+            // BluetoothAdapter.ACTION_SCAN_MODE_CHANGED
+            // BluetoothAdapter.ACTION_LOCAL_NAME_CHANGED
+            addAction(BluetoothAdapter.ACTION_STATE_CHANGED)
+            addAction(BluetoothAdapter.ACTION_DISCOVERY_STARTED)
+            addAction(BluetoothAdapter.ACTION_DISCOVERY_FINISHED)
 
             // Device Events
-            addAction(BluetoothDevice.ACTION_FOUND);
-            addAction(BluetoothDevice.ACTION_NAME_CHANGED);
+            addAction(BluetoothDevice.ACTION_FOUND)
+            addAction(BluetoothDevice.ACTION_NAME_CHANGED)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 addAction(BluetoothDevice.ACTION_ALIAS_CHANGED)
-            };
-            addAction(BluetoothDevice.ACTION_CLASS_CHANGED);
-            addAction(BluetoothDevice.ACTION_UUID);
+            }
+            addAction(BluetoothDevice.ACTION_CLASS_CHANGED)
+            addAction(BluetoothDevice.ACTION_UUID)
 
-            // addAction(BluetoothDevice.ACTION_BOND_STATE_CHANGED);
-//            BluetoothAdapter.ACTION_REQUEST_DISCOVERABLE;
-//            addAction(BluetoothDevice.ACTION_FOUND);
+            // addAction(BluetoothDevice.ACTION_BOND_STATE_CHANGED)
+//            BluetoothAdapter.ACTION_REQUEST_DISCOVERABLE
+//            addAction(BluetoothDevice.ACTION_FOUND)
             // ACTION_BATTERY_LEVEL_CHANGED
             // ACTION_SWITCH_BUFFER_SIZE
-//            addAction(BluetoothDevice.ACTION_UUID);
-//            addAction(BluetoothDevice.ACTION_NAME_CHANGED);
+//            addAction(BluetoothDevice.ACTION_UUID)
+//            addAction(BluetoothDevice.ACTION_NAME_CHANGED)
 //            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
 //                addAction(BluetoothDevice.ACTION_ALIAS_CHANGED)
-//            };
-//            addAction(BluetoothDevice.ACTION_PAIRING_REQUEST);
-//            addAction(BluetoothDevice.ACTION_ACL_CONNECTED);
-//            addAction(BluetoothDevice.ACTION_ACL_DISCONNECTED);
-//            addAction(BluetoothDevice.ACTION_ACL_DISCONNECT_REQUESTED);
-//            addAction(BluetoothDevice.ACTION_BOND_STATE_CHANGED);
-//            addAction(BluetoothDevice.ACTION_CLASS_CHANGED);
-        };
+//            }
+//            addAction(BluetoothDevice.ACTION_PAIRING_REQUEST)
+//            addAction(BluetoothDevice.ACTION_ACL_CONNECTED)
+//            addAction(BluetoothDevice.ACTION_ACL_DISCONNECTED)
+//            addAction(BluetoothDevice.ACTION_ACL_DISCONNECT_REQUESTED)
+//            addAction(BluetoothDevice.ACTION_BOND_STATE_CHANGED)
+//            addAction(BluetoothDevice.ACTION_CLASS_CHANGED)
+        }
         activity!!.registerReceiver(bluetoothBroadcastReceiver, filter)
-        binding.addActivityResultListener(this);
-        binding.addRequestPermissionsResultListener(this);
+        binding.addActivityResultListener(this)
+        binding.addRequestPermissionsResultListener(this)
     }
 
     override fun onReattachedToActivityForConfigChanges(binding: ActivityPluginBinding) {
@@ -163,7 +163,7 @@ class BluetoothCoreAndroidPlugin : FlutterPlugin, MethodCallHandler, ActivityAwa
     }
 
     override fun onDetachedFromActivity() {
-        activity?.unregisterReceiver(bluetoothBroadcastReceiver);
+        activity?.unregisterReceiver(bluetoothBroadcastReceiver)
         activity = null
     }
 
@@ -200,8 +200,8 @@ class BluetoothCoreAndroidPlugin : FlutterPlugin, MethodCallHandler, ActivityAwa
                             intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE)
                         }
                     if (device != null) {
-                        val deviceData = convertDeviceToMap(device);
-                        deviceFoundSink?.success(deviceData);
+                        val deviceData = convertDeviceToMap(device)
+                        deviceFoundSink?.success(deviceData)
                     }
                 }
             }
@@ -209,7 +209,7 @@ class BluetoothCoreAndroidPlugin : FlutterPlugin, MethodCallHandler, ActivityAwa
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?): Boolean {
-        val callback = activityRequestManager.pop(requestCode) ?: return false;
+        val callback = activityRequestManager.pop(requestCode) ?: return false
         return callback(requestCode, resultCode, data)
     }
 
@@ -226,8 +226,8 @@ class BluetoothCoreAndroidPlugin : FlutterPlugin, MethodCallHandler, ActivityAwa
                 grantResults[i] == PackageManager.PERMISSION_GRANTED
         }
 
-        result.success(permissionsResult);
-        return true;
+        result.success(permissionsResult)
+        return true
     }
 
     @SuppressLint("HardwareIds")
@@ -350,21 +350,21 @@ class BluetoothCoreAndroidPlugin : FlutterPlugin, MethodCallHandler, ActivityAwa
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                     result.success(bluetoothAdapter!!.leMaximumAdvertisingDataLength)
                 } else {
-                    osVersionError(result, Build.VERSION_CODES.O);
+                    osVersionError(result, Build.VERSION_CODES.O)
                 }
 
             "maxConnectedAudioDevices" ->
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                     result.success(bluetoothAdapter!!.isLeExtendedAdvertisingSupported)
                 } else {
-                    osVersionError(result, Build.VERSION_CODES.O);
+                    osVersionError(result, Build.VERSION_CODES.O)
                 }
 
             "discoverableTimeoutMs" ->
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                     result.success(bluetoothAdapter!!.discoverableTimeout?.toMillis())
                 } else {
-                    osVersionError(result, Build.VERSION_CODES.TIRAMISU);
+                    osVersionError(result, Build.VERSION_CODES.TIRAMISU)
                 }
 
             else -> result.notImplemented()
@@ -379,18 +379,18 @@ class BluetoothCoreAndroidPlugin : FlutterPlugin, MethodCallHandler, ActivityAwa
                 "current_os_version" to Build.VERSION.SDK_INT,
                 "expected_os_version" to versionRequired,
             )
-        );
+        )
     }
 
-    private fun checkPermission(call: MethodCall, result: MethodChannel.Result) {
+    private fun checkPermission(call: MethodCall, result: Result) {
         val permission = call.argument<String>("permission")!!
         val permissionResult = ContextCompat.checkSelfPermission(activity!!, permission)
-        result.success(permissionResult == PackageManager.PERMISSION_GRANTED);
+        result.success(permissionResult == PackageManager.PERMISSION_GRANTED)
     }
 
-    private fun requestPermissions(call: MethodCall, result: MethodChannel.Result) {
+    private fun requestPermissions(call: MethodCall, result: Result) {
         val permissions = call.argument<List<String>>("permissions")!!
-        val requestCode = permissionRequestManager.addRequest(result);
+        val requestCode = permissionRequestManager.addRequest(result)
         ActivityCompat.requestPermissions(activity!!, permissions.toTypedArray(), requestCode)
     }
 
@@ -400,8 +400,8 @@ class BluetoothCoreAndroidPlugin : FlutterPlugin, MethodCallHandler, ActivityAwa
         val requestCode = activityRequestManager.addRequest { _, resultCode, _ ->
             result.success(resultCode == Activity.RESULT_OK)
             true
-        };
-        activity!!.startActivityForResult(enableBtIntent, requestCode);
+        }
+        activity!!.startActivityForResult(enableBtIntent, requestCode)
     }
 
 
@@ -418,9 +418,9 @@ class BluetoothCoreAndroidPlugin : FlutterPlugin, MethodCallHandler, ActivityAwa
     }
 
     private fun bondedDevices(result: Result) {
-        val boundedDevices = bluetoothAdapter!!.bondedDevices;
+        val boundedDevices = bluetoothAdapter!!.bondedDevices
         val boundedDevicesResult = boundedDevices.map(::convertDeviceToMap)
-        result.success(boundedDevicesResult);
+        result.success(boundedDevicesResult)
     }
 
     private fun rfcommSocketConnect(call: MethodCall, result: Result) {
@@ -438,19 +438,19 @@ class BluetoothCoreAndroidPlugin : FlutterPlugin, MethodCallHandler, ActivityAwa
             // Cancel discovery because it otherwise slows down the connection.
             bluetoothAdapter!!.cancelDiscovery()
             val device = bluetoothAdapter!!.getRemoteDevice(address)
-            val bluetoothSocket: BluetoothSocket;
+            val bluetoothSocket: BluetoothSocket
             try {
                 bluetoothSocket =
                     if (secure)
                         device.createRfcommSocketToServiceRecord(uuid)
                     else
                         device.createInsecureRfcommSocketToServiceRecord(uuid)
-                bluetoothSocket.connect();
+                bluetoothSocket.connect()
             } catch (e: IOException) {
-                e.printStackTrace();
+                e.printStackTrace()
                 result.success(false)
                 // result.error("CONNECTION_FAILED", "Could not connect to device", e.message)
-                return@execute;
+                return@execute
             }
             rfcommSockets[device.address] = bluetoothSocket
             result.success(true)
@@ -497,7 +497,7 @@ class BluetoothCoreAndroidPlugin : FlutterPlugin, MethodCallHandler, ActivityAwa
         try {
             outputStream = socket.outputStream
         } catch (e: IOException) {
-            result.success(false);
+            result.success(false)
             // result.error("IOException", "Error occurred when creating output stream", e)
             return
         }
@@ -509,7 +509,7 @@ class BluetoothCoreAndroidPlugin : FlutterPlugin, MethodCallHandler, ActivityAwa
             outputStream.write(byteArray)
             outputStream.flush()
         } catch (e: IOException) {
-            result.success(false);
+            result.success(false)
             // result.error("IOException", "Error occurred when writing to output stream", e)
             return
         }
@@ -517,7 +517,7 @@ class BluetoothCoreAndroidPlugin : FlutterPlugin, MethodCallHandler, ActivityAwa
         result.success(true)
     }
 
-    private fun rfcommSocketMaxTransmitPacketSize(call: MethodCall, result: MethodChannel.Result) {
+    private fun rfcommSocketMaxTransmitPacketSize(call: MethodCall, result: Result) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
             osVersionError(result, Build.VERSION_CODES.M)
             return
@@ -531,7 +531,7 @@ class BluetoothCoreAndroidPlugin : FlutterPlugin, MethodCallHandler, ActivityAwa
                 "Unable to get max packet size, because there is no active open socket with the given address.",
                 null
             )
-            return;
+            return
         }
 
         result.success(socket.maxTransmitPacketSize)
