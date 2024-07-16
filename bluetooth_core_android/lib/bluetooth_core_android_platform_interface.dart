@@ -85,7 +85,7 @@ abstract class BluetoothCoreAndroidPlatform extends PlatformInterface {
 
   Future<bool> rfcommSocketWrite({
     required String address,
-    required List<int> bytes,
+    required Uint8List bytes,
   });
 
 // TODO: check if already connected???

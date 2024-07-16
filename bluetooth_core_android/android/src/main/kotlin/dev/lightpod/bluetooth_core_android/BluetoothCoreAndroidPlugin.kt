@@ -480,7 +480,7 @@ class BluetoothCoreAndroidPlugin : FlutterPlugin, MethodCallHandler, ActivityAwa
 
     private fun rfcommSocketWrite(call: MethodCall, result: Result) {
         val address = call.argument<String>("address")!!
-        val bytes = call.argument<List<Int>>("bytes")!!
+        val bytes = call.argument<ByteArray>("bytes")!!
 
         val socket = rfcommSockets[address]
         if (socket == null) {
@@ -502,11 +502,8 @@ class BluetoothCoreAndroidPlugin : FlutterPlugin, MethodCallHandler, ActivityAwa
             return
         }
 
-        val byteArray: ByteArray =
-            bytes.map { (if (it > 127) it - 256 else it).toByte() }.toByteArray()
-
         try {
-            outputStream.write(byteArray)
+            outputStream.write(bytes)
             outputStream.flush()
         } catch (e: IOException) {
             result.success(false)

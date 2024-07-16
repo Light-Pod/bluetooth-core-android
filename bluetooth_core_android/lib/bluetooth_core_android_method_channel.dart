@@ -138,7 +138,7 @@ class MethodChannelBluetoothCoreAndroid extends BluetoothCoreAndroidPlatform {
   @override
   Future<bool> rfcommSocketWrite({
     required String address,
-    required List<int> bytes,
+    required Uint8List bytes,
   }) async {
     return (await methodChannel.invokeMethod<bool>('rfcommSocketWrite', {
       'address': address,
