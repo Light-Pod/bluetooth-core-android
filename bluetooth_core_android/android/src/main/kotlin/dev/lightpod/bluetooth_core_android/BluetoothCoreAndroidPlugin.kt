@@ -1,4 +1,4 @@
-package com.example.bluetooth_core_android
+package dev.lightpod.bluetooth_core_android
 
 import android.annotation.SuppressLint
 import android.app.Activity
