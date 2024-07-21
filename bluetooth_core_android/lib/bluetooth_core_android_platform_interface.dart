@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:bluetooth_core_android/src/bluetooth_device.dart';
+import 'package:bluetooth_core_android/src/bluetooth_socket.dart';
 import 'package:bluetooth_core_android/src/permissions.dart';
 import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 
@@ -75,18 +76,23 @@ abstract class BluetoothCoreAndroidPlatform extends PlatformInterface {
 
   Future<bool> isDiscovering();
 
-  Future<bool> rfcommSocketConnect({
+  // TODO: put these in socket class
+  Future<BluetoothSocket> rfcommSocketConnectToServiceRecord({
     required String address,
     required bool secure,
     required String serviceRecordUuid,
   });
 
-  Future<bool> rfcommSocketClose({required String address});
+  Future<bool> rfcommSocketClose({required String socketId});
 
-  Future<bool> rfcommSocketWrite({
-    required String address,
+  Future<bool> rfcommSocketOutputStreamWrite({
+    required String socketId,
     required Uint8List bytes,
   });
 
-// TODO: check if already connected???
+  Future<bool> rfcommSocketOutputStreamFlush({required String socketId});
+
+  Future<int> rfcommSocketInputStreamAvailable({required String socketId});
+
+  Future<int> rfcommSocketInputStreamRead({required String socketId});
 }

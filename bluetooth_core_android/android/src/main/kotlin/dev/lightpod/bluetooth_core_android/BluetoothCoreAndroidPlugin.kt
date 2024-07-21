@@ -27,6 +27,7 @@ import io.flutter.plugin.common.MethodChannel.Result
 import io.flutter.plugin.common.PluginRegistry.ActivityResultListener
 import io.flutter.plugin.common.PluginRegistry.RequestPermissionsResultListener
 import java.io.IOException
+import java.io.InputStream
 import java.io.OutputStream
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
@@ -54,11 +55,11 @@ class BluetoothCoreAndroidPlugin : FlutterPlugin, MethodCallHandler, ActivityAwa
 
     private var bluetoothAdapter: BluetoothAdapter? = null
 
-    private val permissionRequestManager = RequestManager<Result>()
+    private val permissionRequestManager = RequestCallback<Result>()
     private val activityRequestManager =
-        RequestManager<(requestCode: Int, resultCode: Int, data: Intent?) -> Boolean>()
+        RequestCallback<(requestCode: Int, resultCode: Int, data: Intent?) -> Boolean>()
 
-    private val rfcommSockets = ConcurrentHashMap<String, BluetoothSocket>()
+    private val rfcommnSockets = ConcurrentHashMap<String, BluetoothSocket>()
 
     override fun onAttachedToEngine(flutterPluginBinding: FlutterPlugin.FlutterPluginBinding) {
         channel = MethodChannel(flutterPluginBinding.binaryMessenger, namespace)
@@ -174,6 +175,8 @@ class BluetoothCoreAndroidPlugin : FlutterPlugin, MethodCallHandler, ActivityAwa
     private val bluetoothBroadcastReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             println("### bluetoothBroadcastReceiver: " + intent?.action)
+            // TODO: try, catch
+
             when (intent?.action) {
                 // TODO: STATE_OFF, STATE_TURNING_ON, STATE_ON, STATE_TURNING_OFF
                 BluetoothAdapter.ACTION_STATE_CHANGED -> bluetoothStateSink?.success(
@@ -189,19 +192,27 @@ class BluetoothCoreAndroidPlugin : FlutterPlugin, MethodCallHandler, ActivityAwa
                 BluetoothDevice.ACTION_ALIAS_CHANGED,
                 BluetoothDevice.ACTION_CLASS_CHANGED,
                 BluetoothDevice.ACTION_UUID -> {
-                    val device: BluetoothDevice? =
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                            intent.getParcelableExtra(
-                                BluetoothDevice.EXTRA_DEVICE,
-                                BluetoothDevice::class.java
-                            )
-                        } else {
-                            @Suppress("DEPRECATION")
-                            intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE)
+                    try {
+                        val device: BluetoothDevice? =
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                intent.getParcelableExtra(
+                                    BluetoothDevice.EXTRA_DEVICE,
+                                    BluetoothDevice::class.java
+                                )
+                            } else {
+                                @Suppress("DEPRECATION")
+                                intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE)
+                            }
+                        if (device != null) {
+                            val deviceData = convertDeviceToMap(device)
+                            deviceFoundSink?.success(deviceData)
                         }
-                    if (device != null) {
-                        val deviceData = convertDeviceToMap(device)
-                        deviceFoundSink?.success(deviceData)
+                    } catch (e: Error) {
+                        deviceFoundSink?.error(
+                            "ERROR_HANDLING_DEVICE_UPDATE",
+                            e.message ?: "Error Handling ${intent.action} in broadcast receiver",
+                            e
+                        )
                     }
                 }
             }
@@ -230,7 +241,7 @@ class BluetoothCoreAndroidPlugin : FlutterPlugin, MethodCallHandler, ActivityAwa
         return true
     }
 
-    @SuppressLint("HardwareIds")
+    @SuppressLint("HardwareIds", "NewApi")
     override fun onMethodCall(call: MethodCall, result: Result) {
 //        // Profiles
 //        bluetoothAdapter!!.getProfileProxy()
@@ -262,124 +273,146 @@ class BluetoothCoreAndroidPlugin : FlutterPlugin, MethodCallHandler, ActivityAwa
 //        serverSocket.close()
 //        (serverSocket as Object).wait()
 
-        when (call.method) {
-            "getSdkVersion" -> result.success(Build.VERSION.SDK_INT)
-            "checkPermission" -> checkPermission(call, result)
-            "requestPermissions" -> requestPermissions(call, result)
-            "isAvailable" -> result.success(bluetoothAdapter != null)
-            "isEnabled" -> result.success(bluetoothAdapter!!.isEnabled)
-            "enable" -> enable(result)
-            "name" -> result.success(bluetoothAdapter!!.name)
-//            // "setName" -> result.success(bluetoothAdapter!!.name)
-            "address" -> result.success(bluetoothAdapter!!.address)
-            "scanMode" -> result.success(bluetoothAdapter!!.scanMode)
+        try {
+            when (call.method) {
+                "getSdkVersion" -> result.success(Build.VERSION.SDK_INT)
+                "checkPermission" -> checkPermission(call, result)
+                "requestPermissions" -> requestPermissions(call, result)
+                "isAvailable" -> result.success(bluetoothAdapter != null)
+                "isEnabled" -> result.success(bluetoothAdapter!!.isEnabled)
+                "enable" -> enable(result)
+                "name" -> result.success(bluetoothAdapter!!.name)
+                "setName" -> result.success(
+                    bluetoothAdapter!!.setName(call.argument<String>("name")!!)
+                )
+
+                "address" -> result.success(bluetoothAdapter!!.address)
+                "scanMode" -> result.success(bluetoothAdapter!!.scanMode)
 //            "getRemoteDevice" -> result.success(bluetoothAdapter!!.getRemoteDevice())
-//            //        var device: BluetoothDevice
-//            //        device.createBond()
-//            //        device.describeContents()
-//            //        device.fetchUuidsWithSdp()
-//            //        device.setAlias()
-//            //        device.setPairingConfirmation()
-//            //        device.setPin()
-//            //        device.writeToParcel()
-            "bondedDevices" -> bondedDevices(result)
-            "isDiscovering" -> result.success(bluetoothAdapter!!.isDiscovering)
-            "startDiscovery" -> result.success(bluetoothAdapter!!.startDiscovery())
-            "cancelDiscovery" -> result.success(bluetoothAdapter!!.cancelDiscovery())
-            "rfcommSocketConnect" -> rfcommSocketConnect(call, result)
-            "rfcommSocketClose" -> rfcommSocketClose(call, result)
-            "rfcommSocketWrite" -> rfcommSocketWrite(call, result)
-            "rfcommSocketMaxTransmitPacketSize" -> rfcommSocketMaxTransmitPacketSize(call, result)
-            // "rfcommSocketIsConnected" -> rfcommnSocketWrite(call, result)
-            // "rfcommSocketMaxTransmitPacketSize" -> rfcommnSocketWrite(call, result)
-            // "rfcommSocketRead" -> rfcommnSocketWrite(call, result)
-            // "rfcommSocketConnectionType" -> rfcommnSocketWrite(call, result)
-            // "rfcommSocketMaxReceivePacketSize" -> rfcommnSocketWrite(call, result)
-            // "rfcommSocketConnectionType" -> rfcommnSocketWrite(call, result)
-            // device.createInsecureL2capChannel()
-            // device.createL2capChannel()
-
-            "isMultipleAdvertisementSupported" -> result.success(
-                bluetoothAdapter!!.isMultipleAdvertisementSupported
-            )
-
-            "isOffloadedFilteringSupported" -> result.success(
-                bluetoothAdapter!!.isOffloadedFilteringSupported
-            )
-
-            "isOffloadedScanBatchingSupported" -> result.success(
-                bluetoothAdapter!!.isOffloadedScanBatchingSupported
-            )
-
-            "isLe2MPhySupported" -> result.success(
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
-                    bluetoothAdapter!!.isLe2MPhySupported else false
-            )
-
-            "isLeAudioSupported" -> result.success(
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
-                    bluetoothAdapter!!.isLeAudioBroadcastAssistantSupported else false
-            )
-
-            "isLeAudioBroadcastAssistantSupported" -> result.success(
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
-                    bluetoothAdapter!!.isLeAudioBroadcastAssistantSupported else false
-            )
-
-            "isLeAudioBroadcastSourceSupported" -> result.success(
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
-                    bluetoothAdapter!!.isLeAudioBroadcastAssistantSupported else false
-            )
-
-            "isLeCodedPhySupported" -> result.success(
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
-                    bluetoothAdapter!!.isLeCodedPhySupported else false
-            )
-
-            "isLePeriodicAdvertisingSupported" -> result.success(
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
-                    bluetoothAdapter!!.isLePeriodicAdvertisingSupported else false
-            )
-
-            "isLeExtendedAdvertisingSupported" -> result.success(
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
-                    bluetoothAdapter!!.isLeExtendedAdvertisingSupported else false
-            )
-
-            "leMaximumAdvertisingDataLength" ->
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    result.success(bluetoothAdapter!!.leMaximumAdvertisingDataLength)
-                } else {
-                    osVersionError(result, Build.VERSION_CODES.O)
+                //        var device: BluetoothDevice
+                //        device.createBond()
+                //        device.describeContents()
+                //        device.fetchUuidsWithSdp()
+                //        device.setAlias()
+                //        device.setPairingConfirmation()
+                //        device.setPin()
+                //        device.writeToParcel()
+                //      connect to gatt
+                "bondedDevices" -> bondedDevices(result)
+                "isDiscovering" -> result.success(bluetoothAdapter!!.isDiscovering)
+                "startDiscovery" -> result.success(bluetoothAdapter!!.startDiscovery())
+                "cancelDiscovery" -> result.success(bluetoothAdapter!!.cancelDiscovery())
+                "rfcommSocketConnect" -> rfcommSocketConnect(call, result)
+                "rfcommSocketClose" -> rfcommSocketClose(call, result)
+                "getSocketData" -> getSocketData(call, result)
+                "rfcommSocketIsConnected" -> result.success(getSocket(call).isConnected)
+                "rfcommSocketConnectionType" -> {
+                    checkOsVersion(Build.VERSION_CODES.M)
+                    val socket = getSocket(call);
+                    result.success(socket.connectionType)
                 }
 
-            "maxConnectedAudioDevices" ->
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    result.success(bluetoothAdapter!!.isLeExtendedAdvertisingSupported)
-                } else {
-                    osVersionError(result, Build.VERSION_CODES.O)
+                "rfcommSocketMaxTransmitPacketSize" -> {
+                    checkOsVersion(Build.VERSION_CODES.M)
+                    val socket = getSocket(call);
+                    result.success(socket.maxTransmitPacketSize)
                 }
 
-            "discoverableTimeoutMs" ->
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    result.success(bluetoothAdapter!!.discoverableTimeout?.toMillis())
-                } else {
-                    osVersionError(result, Build.VERSION_CODES.TIRAMISU)
+                "rfcommSocketMaxReceivePacketSize" -> {
+                    val socket = getSocket(call);
+                    result.success(socket.maxReceivePacketSize)
                 }
 
-            else -> result.notImplemented()
+                "rfcommSocketOutputStreamWrite" -> rfcommSocketOutputStreamWrite(call, result)
+                "rfcommSocketOutputStreamFlush" -> rfcommSocketOutputStreamFlush(call, result)
+                "rfcommSocketInputStreamAvailable" -> rfcommSocketInputStreamAvailable(call, result)
+                "rfcommSocketInputStreamRead" -> rfcommSocketInputStreamRead(call, result)
+
+                // device.createInsecureL2capChannel()
+                // device.createL2capChannel()
+
+                "isMultipleAdvertisementSupported" -> result.success(
+                    bluetoothAdapter!!.isMultipleAdvertisementSupported
+                )
+
+                "isOffloadedFilteringSupported" -> result.success(
+                    bluetoothAdapter!!.isOffloadedFilteringSupported
+                )
+
+                "isOffloadedScanBatchingSupported" -> result.success(
+                    bluetoothAdapter!!.isOffloadedScanBatchingSupported
+                )
+
+                "isLe2MPhySupported" -> result.success(
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+                        bluetoothAdapter!!.isLe2MPhySupported else false
+                )
+
+                "isLeAudioSupported" -> result.success(
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
+                        bluetoothAdapter!!.isLeAudioBroadcastAssistantSupported else false
+                )
+
+                "isLeAudioBroadcastAssistantSupported" -> result.success(
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
+                        bluetoothAdapter!!.isLeAudioBroadcastAssistantSupported else false
+                )
+
+                "isLeAudioBroadcastSourceSupported" -> result.success(
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
+                        bluetoothAdapter!!.isLeAudioBroadcastAssistantSupported else false
+                )
+
+                "isLeCodedPhySupported" -> result.success(
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+                        bluetoothAdapter!!.isLeCodedPhySupported else false
+                )
+
+                "isLePeriodicAdvertisingSupported" -> result.success(
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+                        bluetoothAdapter!!.isLePeriodicAdvertisingSupported else false
+                )
+
+                "isLeExtendedAdvertisingSupported" -> result.success(
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+                        bluetoothAdapter!!.isLeExtendedAdvertisingSupported else false
+                )
+
+                "leMaximumAdvertisingDataLength" ->
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        result.success(bluetoothAdapter!!.leMaximumAdvertisingDataLength)
+                    } else {
+                        checkOsVersion(Build.VERSION_CODES.O)
+                    }
+
+                "maxConnectedAudioDevices" ->
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        result.success(bluetoothAdapter!!.isLeExtendedAdvertisingSupported)
+                    } else {
+                        checkOsVersion(Build.VERSION_CODES.O)
+                    }
+
+                "discoverableTimeoutMs" ->
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        result.success(bluetoothAdapter!!.discoverableTimeout?.toMillis())
+                    } else {
+                        checkOsVersion(Build.VERSION_CODES.TIRAMISU)
+                    }
+
+                else -> result.notImplemented()
+            }
+        } catch (e: UnsupportedOsVersionException) {
+            result.error(e.errorCode, e.errorMessage, e.errorDetails)
         }
     }
 
-    private fun osVersionError(result: Result, versionRequired: Int) {
-        result.error(
-            "unsupported_android_os_version",
-            "Expected OS version: $versionRequired. Current OS Version: ${Build.VERSION.SDK_INT}",
-            mapOf(
-                "current_os_version" to Build.VERSION.SDK_INT,
-                "expected_os_version" to versionRequired,
-            )
-        )
+    /**
+     * @throws UnsupportedOsVersionException
+     */
+    private fun checkOsVersion(expectedOsVersion: Int): Unit {
+        if (Build.VERSION.SDK_INT < expectedOsVersion) {
+            throw UnsupportedOsVersionException(expectedOsVersion);
+        }
     }
 
     private fun checkPermission(call: MethodCall, result: Result) {
@@ -404,7 +437,6 @@ class BluetoothCoreAndroidPlugin : FlutterPlugin, MethodCallHandler, ActivityAwa
         activity!!.startActivityForResult(enableBtIntent, requestCode)
     }
 
-
     private fun convertDeviceToMap(device: BluetoothDevice): Map<String, Any?> {
         return mapOf(
             "name" to device.name,
@@ -412,7 +444,7 @@ class BluetoothCoreAndroidPlugin : FlutterPlugin, MethodCallHandler, ActivityAwa
             "type" to device.type,
             "address" to device.address,
             "bondState" to device.bondState,
-            "classOfDevice" to device.bluetoothClass.toString().toInt(16),
+            "classOfDevice" to device.bluetoothClass?.toString()?.toInt(16),
             "uuids" to device.uuids?.map { uuid -> uuid.toString() },
         )
     }
@@ -423,18 +455,50 @@ class BluetoothCoreAndroidPlugin : FlutterPlugin, MethodCallHandler, ActivityAwa
         result.success(boundedDevicesResult)
     }
 
+    /**
+     * @throws SocketNotFoundException
+     */
+    private fun getSocket(call: MethodCall): BluetoothSocket {
+        val socketId = call.argument<String>("socketId")!!
+
+        return rfcommnSockets[socketId] ?: throw SocketNotFoundException(socketId)
+    }
+
+    private fun convertSocketToMap(
+        id: String,
+        bluetoothSocket: BluetoothSocket
+    ): MutableMap<String, Any> {
+        val socketData: MutableMap<String, Any> = mutableMapOf(
+            "id" to id,
+            "type" to "rfcommn",
+            "isConnected" to bluetoothSocket.isConnected,
+        );
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            socketData.putAll(
+                mutableMapOf(
+                    "connectionType" to bluetoothSocket.connectionType,
+                    "maxReceivePacketSize" to bluetoothSocket.maxReceivePacketSize,
+                    "maxTransmitPacketSize" to bluetoothSocket.maxTransmitPacketSize,
+                )
+            )
+        }
+
+        return socketData
+    }
+
+    private fun getSocketData(call: MethodCall, result: Result): Unit {
+        val id = call.argument<String>("socketId")!!
+        val bluetoothSocket = getSocket(call)
+        result.success(convertSocketToMap(id, bluetoothSocket))
+    }
+
     private fun rfcommSocketConnect(call: MethodCall, result: Result) {
         val address = call.argument<String>("address")!!
         val secure = call.argument<Boolean>("secure")!!
-        val uuid = UUID.fromString(call.argument<String>("serviceRecordUuid")!!)
+        val serviceRecordUuid = UUID.fromString(call.argument<String>("serviceRecordUuid")!!)
 
-        val existingSocket = rfcommSockets[address]
-        if (existingSocket != null && existingSocket.isConnected) {
-            result.success(true)
-            return
-        }
-
-        executorService!!.execute { // TODO: maybe do in an isolate
+        executorService!!.execute { // TODO: maybe do in an isolate in Dart
             // Cancel discovery because it otherwise slows down the connection.
             bluetoothAdapter!!.cancelDiscovery()
             val device = bluetoothAdapter!!.getRemoteDevice(address)
@@ -442,101 +506,146 @@ class BluetoothCoreAndroidPlugin : FlutterPlugin, MethodCallHandler, ActivityAwa
             try {
                 bluetoothSocket =
                     if (secure)
-                        device.createRfcommSocketToServiceRecord(uuid)
+                        device.createRfcommSocketToServiceRecord(serviceRecordUuid)
                     else
-                        device.createInsecureRfcommSocketToServiceRecord(uuid)
+                        device.createInsecureRfcommSocketToServiceRecord(serviceRecordUuid)
                 bluetoothSocket.connect()
             } catch (e: IOException) {
                 e.printStackTrace()
-                result.success(false)
-                // result.error("CONNECTION_FAILED", "Could not connect to device", e.message)
+                result.error(
+                    "CONNECTION_FAILED",
+                    "Could not connect to device",
+                    null,
+                )
+                // throw SocketConnectionFailedException();
                 return@execute
             }
-            rfcommSockets[device.address] = bluetoothSocket
-            result.success(true)
+            val uuid = UUID.randomUUID();
+            rfcommnSockets[uuid.toString()] = bluetoothSocket;
+
+            result.success(convertSocketToMap(uuid.toString(), bluetoothSocket))
         }
     }
 
     private fun rfcommSocketClose(call: MethodCall, result: Result) {
-        val address = call.argument<String>("address")!!
-
-        val existingSocket = rfcommSockets[address]
-        if (existingSocket == null) {
+        val id = call.argument<String>("socketId")!!
+        val bluetoothSocket: BluetoothSocket;
+        try {
+            bluetoothSocket = getSocket(call);
+        } catch (_: SocketNotFoundException) {
             result.success(true)
-            return
+            return;
         }
 
         try {
-            existingSocket.close()
+            bluetoothSocket.close()
         } catch (e: IOException) {
             e.printStackTrace()
             result.success(false)
             return
         }
 
-        rfcommSockets.remove(address)
+        rfcommnSockets.remove(id)
         result.success(true)
     }
 
-    private fun rfcommSocketWrite(call: MethodCall, result: Result) {
-        val address = call.argument<String>("address")!!
-        val bytes = call.argument<ByteArray>("bytes")!!
+    /*
+            bluetoothSocket.outputStream.close();
+            bluetoothSocket.inputStream.reset();
+            bluetoothSocket.inputStream.mark();
+            bluetoothSocket.inputStream.readAllBytes();
+            bluetoothSocket.inputStream.readNBytes();
+            bluetoothSocket.inputStream.skip();
+            bluetoothSocket.inputStream.skipNBytes();
+     */
 
-        val socket = rfcommSockets[address]
-        if (socket == null) {
-            result.success(false)
-//            result.error(
-//                "WRITE_FAILED_NO_CONNECTION",
-//                "Unable to write to device, because there is no connection",
-//                null
-//            )
-            return
-        }
-
+    private fun rfcommnGetOutputStream(call: MethodCall): OutputStream {
+        val socket = getSocket(call)
         val outputStream: OutputStream
         try {
             outputStream = socket.outputStream
         } catch (e: IOException) {
-            result.success(false)
-            // result.error("IOException", "Error occurred when creating output stream", e)
-            return
+            throw UnableToOpenOutputStream(e);
         }
 
-        try {
-            outputStream.write(bytes)
-            outputStream.flush()
-        } catch (e: IOException) {
-            result.success(false)
-            // result.error("IOException", "Error occurred when writing to output stream", e)
-            return
-        }
-
-        result.success(true)
+        return outputStream;
     }
 
-    private fun rfcommSocketMaxTransmitPacketSize(call: MethodCall, result: Result) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
-            osVersionError(result, Build.VERSION_CODES.M)
-            return
+    private fun rfcommnGetInputStream(call: MethodCall): InputStream {
+        val socket = getSocket(call)
+        val inputStream: InputStream
+        try {
+            inputStream = socket.inputStream
+        } catch (e: IOException) {
+            throw UnableToOpenInputStream(e);
         }
 
-        val address = call.argument<String>("address")!!
-        val socket = rfcommSockets[address]
-        if (socket == null) {
+        return inputStream;
+    }
+
+    private fun rfcommSocketOutputStreamWrite(call: MethodCall, result: Result) {
+        val bytes = call.argument<ByteArray>("bytes")!!
+        val outputStream = rfcommnGetOutputStream(call);
+        try {
+            outputStream.write(bytes)
+        } catch (e: IOException) {
             result.error(
-                "SOCKET_NOT_OPEN",
-                "Unable to get max packet size, because there is no active open socket with the given address.",
-                null
+                "UNABLE_TO_WRITE_TO_OUTPUT_STREAM",
+                "Error occurred when writing to output stream",
+                e
             )
             return
         }
+        result.success(true)
+    }
 
-        result.success(socket.maxTransmitPacketSize)
+    private fun rfcommSocketOutputStreamFlush(call: MethodCall, result: Result) {
+        val outputStream = rfcommnGetOutputStream(call);
+        try {
+            outputStream.flush()
+        } catch (e: IOException) {
+            result.error(
+                "UNABLE_TO_FLUSH_OUTPUT_STREAM",
+                "Error occurred when flushing to output stream",
+                e
+            )
+            return
+        }
+        result.success(true)
+    }
+
+    private fun rfcommSocketInputStreamAvailable(call: MethodCall, result: Result) {
+        val inputStream = rfcommnGetInputStream(call);
+        val available: Int
+        try {
+            available = inputStream.available()
+        } catch (e: IOException) {
+            result.error(
+                "INPUT_STREAM_GET_AVAILABLE_ERROR",
+                "Unable to get the available bytes from input stream",
+                e
+            )
+            return
+        }
+        result.success(available)
+    }
+
+    private fun rfcommSocketInputStreamRead(call: MethodCall, result: Result) {
+        val inputStream = rfcommnGetInputStream(call);
+        val byte: Int
+        try {
+            byte = inputStream.read()
+        } catch (e: IOException) {
+            result.error(
+                "INPUT_STREAM_READ_ERROR",
+                "Unable to read from input stream",
+                e
+            )
+            return
+        }
+        result.success(byte)
     }
 }
-
-// TODO: formalise error messages
-// TODO: how does dart format these errors
 
 //            val mmBuffer = ByteArray(1024)
 //            var numBytes: Int // bytes returned from read()

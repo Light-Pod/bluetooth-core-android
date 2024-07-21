@@ -1,6 +1,4 @@
 import 'dart:convert';
-import 'dart:developer';
-
 import 'package:flutter/material.dart';
 import 'dart:async';
 
@@ -74,6 +72,8 @@ class _ContentState extends State<_Content> {
   late bool _isDiscovering;
   final _bluetoothCoreAndroidPlugin = BluetoothCoreAndroid();
   BluetoothDevice? _selectedDevice;
+  BluetoothSocket? _socket;
+  Timer? _timer;
 
   static const EventChannel eventChannel = EventChannel('found_device_event');
 
@@ -130,8 +130,7 @@ class _ContentState extends State<_Content> {
                           ),
                           StreamBuilder(
                             initialData: _isDiscovering,
-                            stream: _bluetoothCoreAndroidPlugin
-                                .bluetoothDiscoveryStream,
+                            stream: _bluetoothCoreAndroidPlugin.bluetoothDiscoveryStream,
                             builder: (context, snapshot) {
                               final isDiscovering = snapshot.data!;
 
@@ -151,35 +150,43 @@ class _ContentState extends State<_Content> {
                             },
                           ),
                           StreamBuilder(
-                            initialData:
-                                _bluetoothCoreAndroidPlugin.scanResults,
-                            stream:
-                                _bluetoothCoreAndroidPlugin.scanResultsStream,
+                            initialData: _bluetoothCoreAndroidPlugin.scanResults,
+                            stream: _bluetoothCoreAndroidPlugin.scanResultsStream,
                             builder: (context, snapshot) {
                               return _Devices(
                                 snapshot.data!,
                                 selectedDevice: _selectedDevice,
                                 onSelect: (device) {
+                                  // TODO: disconnect
                                   setState(() {
                                     _selectedDevice = device;
+                                    // TODO: destroy current socket
+                                    _socket = null;
                                   });
                                 },
                               );
                             },
                           ),
                           if (_selectedDevice != null) ...[
-                            OutlinedButton(
-                              onPressed: connect,
-                              child: const Text('Connect'),
-                            ),
-                            OutlinedButton(
-                              onPressed: disconnect,
-                              child: const Text('Disconnect'),
-                            ),
-                            OutlinedButton(
-                              onPressed: write,
-                              child: const Text('Write'),
-                            ),
+                            if (_socket == null) ...[
+                              OutlinedButton(
+                                onPressed: connect,
+                                child: const Text('Connect'),
+                              ),
+                            ] else ...[
+                              OutlinedButton(
+                                onPressed: disconnect,
+                                child: const Text('Disconnect'),
+                              ),
+                              OutlinedButton(
+                                onPressed: write,
+                                child: const Text('Write'),
+                              ),
+                              OutlinedButton(
+                                onPressed: inputTest,
+                                child: const Text('Input Test'),
+                              ),
+                            ],
                           ],
                         ]
                       : [],
@@ -245,25 +252,34 @@ class _ContentState extends State<_Content> {
 
   void connect() async {
     try {
-      final result = await _bluetoothCoreAndroidPlugin.rfcommSocketConnect(
+      final socket = await _bluetoothCoreAndroidPlugin.rfcommSocketConnect(
         address: _selectedDevice!.address,
         secure: false,
       );
-      if (result) {
+      setState(() => _socket = socket);
+      if (mounted) {
         showSnackBar(context, 'Connected');
-      } else {
-        showErrorSnackBar(context, 'Failed to connect');
       }
     } on PermissionException {
-      showErrorSnackBar(context, 'Permission error');
+      if (mounted) {
+        showErrorSnackBar(context, 'Permission error');
+      }
+    } catch (e) {
+      if (mounted) {
+        showErrorSnackBar(context, 'Failed to connect');
+      }
     }
   }
 
   void disconnect() async {
     try {
+      _timer!.cancel();
       final result = await _bluetoothCoreAndroidPlugin.rfcommSocketClose(
-        address: _selectedDevice!.address,
+        socketId: _socket!.id,
       );
+      setState(() {
+        _socket = null;
+      });
       if (result) {
         showSnackBar(context, 'Disconnected');
       } else {
@@ -277,7 +293,7 @@ class _ContentState extends State<_Content> {
   void write() async {
     try {
       final result = await _bluetoothCoreAndroidPlugin.rfcommSocketWrite(
-        address: _selectedDevice!.address,
+        socketId: _socket!.id,
         bytes: utf8.encode("Hello World\n\n\n\nhi you!\n\n"),
       );
       if (result) {
@@ -288,6 +304,24 @@ class _ContentState extends State<_Content> {
     } on PermissionException {
       showErrorSnackBar(context, 'Permission error');
     }
+  }
+
+  void inputTest() async {
+    final result = await _bluetoothCoreAndroidPlugin.rfcommSocketWrite(
+      socketId: _socket!.id,
+      bytes: Uint8List.fromList([16, 4, 2]),
+    );
+    if (!result) {
+      showErrorSnackBar(context, 'Failed to write');
+      return;
+    }
+    _timer = Timer.periodic(const Duration(milliseconds: 100), (timer) async {
+      print("CHECKING...");
+      final available = await _bluetoothCoreAndroidPlugin.rfcommSocketInputStreamAvailable(socketId: _socket!.id);
+      if (available > 0) {
+        print(await _bluetoothCoreAndroidPlugin.rfcommSocketInputStreamRead(socketId: _socket!.id));
+      }
+    });
   }
 }
 

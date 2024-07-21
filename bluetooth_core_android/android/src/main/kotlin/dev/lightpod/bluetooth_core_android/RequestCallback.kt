@@ -5,7 +5,7 @@ import java.util.concurrent.ConcurrentHashMap
 
 // TODO: what if exceeeds: 2147483647
 
-class RequestManager<T> {
+class RequestCallback<T> {
     private val callbacks = ConcurrentHashMap<Int, T>()
 
     companion object {

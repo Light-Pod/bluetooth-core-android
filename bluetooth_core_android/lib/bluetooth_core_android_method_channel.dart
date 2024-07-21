@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:bluetooth_core_android/src/bluetooth_device.dart';
+import 'package:bluetooth_core_android/src/bluetooth_socket.dart';
 import 'package:bluetooth_core_android/src/permissions.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -102,9 +103,6 @@ class MethodChannelBluetoothCoreAndroid extends BluetoothCoreAndroidPlatform {
 
   @override
   Future<bool> startDiscovery() async {
-    // if (bluetoothAdapter!!.isDiscovering) { // TODO: put in separate
-    //   bluetoothAdapter!!.cancelDiscovery()
-    // }
     return (await methodChannel.invokeMethod<bool>('startDiscovery'))!;
   }
 
@@ -114,12 +112,12 @@ class MethodChannelBluetoothCoreAndroid extends BluetoothCoreAndroidPlatform {
   }
 
   @override
-  Future<bool> rfcommSocketConnect({
+  Future<BluetoothSocket> rfcommSocketConnectToServiceRecord({
     required String address,
     required bool secure,
     required String serviceRecordUuid,
   }) async {
-    return (await methodChannel.invokeMethod<bool>(
+    final result = (await methodChannel.invokeMethod<Map>(
       'rfcommSocketConnect',
       {
         'address': address,
@@ -127,23 +125,51 @@ class MethodChannelBluetoothCoreAndroid extends BluetoothCoreAndroidPlatform {
         'serviceRecordUuid': serviceRecordUuid,
       },
     ))!;
+
+    return BluetoothSocket.fromJson(convertToJson(result));
   }
 
   @override
-  Future<bool> rfcommSocketClose({required String address}) async {
+  Future<bool> rfcommSocketClose({required String socketId}) async {
     return (await methodChannel
-        .invokeMethod<bool>('rfcommSocketClose', {'address': address}))!;
+        .invokeMethod<bool>('rfcommSocketClose', {'socketId': socketId}))!;
   }
 
   @override
-  Future<bool> rfcommSocketWrite({
-    required String address,
+  Future<bool> rfcommSocketOutputStreamWrite({
+    required String socketId,
     required Uint8List bytes,
   }) async {
-    return (await methodChannel.invokeMethod<bool>('rfcommSocketWrite', {
-      'address': address,
-      'bytes': bytes,
-    }))!;
+    return (await methodChannel.invokeMethod<bool>(
+      'rfcommSocketOutputStreamWrite',
+      {
+        'socketId': socketId,
+        'bytes': bytes,
+      },
+    ))!;
+  }
+
+  @override
+  Future<bool> rfcommSocketOutputStreamFlush({required String socketId}) async {
+    return (await methodChannel.invokeMethod<bool>(
+      'rfcommSocketOutputStreamFlush',
+      {'socketId': socketId},
+    ))!;
+  }
+
+  @override
+  Future<int> rfcommSocketInputStreamAvailable(
+      {required String socketId}) async {
+    return (await methodChannel.invokeMethod<int>(
+      'rfcommSocketInputStreamAvailable',
+      {'socketId': socketId},
+    ))!;
+  }
+
+  @override
+  Future<int> rfcommSocketInputStreamRead({required String socketId}) async {
+    return (await methodChannel.invokeMethod<int>(
+        'rfcommSocketInputStreamRead', {'socketId': socketId}))!;
   }
 }
 

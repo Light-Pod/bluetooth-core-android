@@ -2,10 +2,12 @@ import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:bluetooth_core_android/src/bluetooth_device.dart';
+import 'package:bluetooth_core_android/src/bluetooth_socket.dart';
 import 'package:bluetooth_core_android/src/permissions.dart';
 import 'bluetooth_core_android_platform_interface.dart';
 
 export 'src/bluetooth_device.dart';
+export 'src/bluetooth_socket.dart';
 
 class BluetoothCoreAndroid {
   static BluetoothCoreAndroid? _instance;
@@ -16,14 +18,12 @@ class BluetoothCoreAndroid {
   }
 
   int? _sdkVersion;
-  final BluetoothCoreAndroidPlatform api =
-      BluetoothCoreAndroidPlatform.instance;
+  final BluetoothCoreAndroidPlatform api = BluetoothCoreAndroidPlatform.instance;
 
   late final Stream<bool> bluetoothStateStream;
 
   /// Fetches all the devices found so far. Is cleared after running "startDiscovery" method
-  final _scanResultsController =
-      StreamController<List<BluetoothDevice>>.broadcast();
+  final _scanResultsController = StreamController<List<BluetoothDevice>>.broadcast();
   final List<BluetoothDevice> _scanResults = [];
 
   BluetoothCoreAndroid() {
@@ -52,13 +52,11 @@ class BluetoothCoreAndroid {
 
   List<BluetoothDevice> get scanResults => List.unmodifiable(_scanResults);
 
-  Stream<List<BluetoothDevice>> get scanResultsStream =>
-      _scanResultsController.stream;
+  Stream<List<BluetoothDevice>> get scanResultsStream => _scanResultsController.stream;
 
   // Stream<bool> get bluetoothStateStream => api.getBluetoothStateStream();
 
-  Stream<bool> get bluetoothDiscoveryStream =>
-      api.getBluetoothDiscoveryStream();
+  Stream<bool> get bluetoothDiscoveryStream => api.getBluetoothDiscoveryStream();
 
   void dispose() {
     _scanResultsController.close();
@@ -75,6 +73,15 @@ class BluetoothCoreAndroid {
 
   Future<bool> isEnabled() async {
     return await isAvailable() && await api.isEnabled();
+  }
+
+  Future checkAvailableAndEnabled() async {
+    if (!(await api.isAvailable())) {
+      throw BluetoothNotAvailableException();
+    }
+    if (!(await api.isEnabled())) {
+      throw BluetoothNotEnabledException();
+    }
   }
 
   Future<void> requestPermissions(
@@ -107,7 +114,7 @@ class BluetoothCoreAndroid {
   Future<void> requestBluetoothScanPermission() async {
     /*
     For Android 6.0 (API level 23) and above, you need to request the
-    ACCESS_FINE_LOCATION permission at runtime. For Android 12 and higher,
+    ACCESS_FINE_LOCATION permission at runtime. For Android 12 (API Level 31) and higher,
     you also need to request BLUETOOTH_SCAN and BLUETOOTH_CONNECT permissions at runtime.
      */
     // TODO: fine-tune, as can change depending on manifest
@@ -117,7 +124,11 @@ class BluetoothCoreAndroid {
             AndroidBluetoothPermission.bluetoothConnect,
             // TODO: can be for location as well if SDK less than and needed for location
           ]
-        : [AndroidBluetoothPermission.bluetoothAdmin];
+        : [
+            AndroidBluetoothPermission.bluetooth,
+            AndroidBluetoothPermission.bluetoothAdmin,
+            AndroidBluetoothPermission.accessFineLocation,
+          ];
 
     await requestPermissions(permissions);
   }
@@ -165,75 +176,38 @@ class BluetoothCoreAndroid {
     return await isDiscovering() ? await api.cancelDiscovery() : true;
   }
 
-  // Future<bool> write({
-  //   required String address,
-  //   required Uint8List bytes,
-  // }) async {
-  //   if (!await api.isEnabled()) {
-  //     return false;
-  //   }
-  //
-  //   // TODO: check if connected already
-  //   final connected = await api.rfcommSocketConnect(
-  //     address: address,
-  //     secure: false,
-  //     serviceRecordUuid: '00001101-0000-1000-8000-00805F9B34FB',
-  //   );
-  //
-  //   if (!connected) {
-  //     return false;
-  //   }
-  //
-  //   /*
-  //   var offset = 0
-  //       while (offset < data.size) {
-  //           val chunkSize = minOf(maxChunkSize, data.size - offset)
-  //           val chunk = data.copyOfRange(offset, offset + chunkSize)
-  //           try {
-  //               outputStream?.write(chunk)
-  //           } catch (e: IOException) {
-  //               Log.e("Bluetooth", "Error sending data", e)
-  //               break
-  //           }
-  //           offset += chunkSize
-  //       }
-  //    */
-  //
-  //   try {
-  //     // TODO: chunk
-  //     return await api.rfcommSocketWrite(address: address, bytes: bytes);
-  //   } catch (e) {
-  //     return false;
-  //   } finally {
-  //     await api.rfcommSocketClose(address: address);
-  //   }
-  // }
-
-  Future<bool> rfcommSocketConnect({
+  Future<BluetoothSocket> rfcommSocketConnect({
     required String address,
     required bool secure,
   }) async {
-    if (!await api.isEnabled()) {
-      return false;
-    }
+    await checkAvailableAndEnabled();
     await requestBluetoothConnectPermission();
-
-    return await api.rfcommSocketConnect(
+    return await api.rfcommSocketConnectToServiceRecord(
       address: address,
       secure: secure,
+      // TODO: check device UUID's
       serviceRecordUuid: '00001101-0000-1000-8000-00805F9B34FB',
     );
   }
 
-  Future<bool> rfcommSocketClose({required String address}) async {
-    return await api.rfcommSocketClose(address: address);
+  Future<bool> rfcommSocketClose({required String socketId}) async {
+    return await api.rfcommSocketClose(socketId: socketId);
   }
 
   Future<bool> rfcommSocketWrite({
-    required String address,
+    required String socketId,
     required Uint8List bytes,
   }) async {
-    return await api.rfcommSocketWrite(address: address, bytes: bytes);
+    return await api.rfcommSocketOutputStreamWrite(socketId: socketId, bytes: bytes) &&
+        await api.rfcommSocketOutputStreamFlush(socketId: socketId);
+  }
+
+  Future<int> rfcommSocketInputStreamAvailable({required String socketId}) async {
+    return await api.rfcommSocketInputStreamAvailable(socketId: socketId);
+  }
+
+  Future<int> rfcommSocketInputStreamRead({required String socketId}) async {
+    return await api.rfcommSocketInputStreamRead(socketId: socketId);
   }
 }
 
@@ -246,40 +220,25 @@ abstract class BluetoothException implements Exception {
 }
 
 class PermissionException extends BluetoothException {
-  PermissionException([String? message])
-      : super(message ?? 'Permission Denied'); // TODO
-
-// @override
-// String toString() {
-//   return "MyCustomException: $message";
-// }
+  PermissionException([String? message]) : super(message ?? 'Permission Denied'); // TODO
 }
 
 class BluetoothNotAvailableException extends BluetoothException {
-  BluetoothNotAvailableException([String? message])
-      : super(message ?? 'Bluetooth not available on this device!');
-// BluetoothNotAvailableException(
-//     super.
-//     );
-//
+  BluetoothNotAvailableException([String? message]) : super(message ?? 'Bluetooth not available on this device!');
 }
 
 class BluetoothNotEnabledException extends BluetoothException {
-  BluetoothNotEnabledException([String? message])
-      : super(message ?? 'Bluetooth not enabled!');
+  BluetoothNotEnabledException([String? message]) : super(message ?? 'Bluetooth not enabled!');
 }
 
 class UnableToConnectToDevice extends BluetoothException {
-  UnableToConnectToDevice([String? message])
-      : super(message ?? 'Unable to connect to Bluetooth Device!');
+  UnableToConnectToDevice([String? message]) : super(message ?? 'Unable to connect to Bluetooth Device!');
 }
 
 class UnableToWriteToDevice extends BluetoothException {
-  UnableToWriteToDevice([String? message])
-      : super(message ?? 'Unable to write to Bluetooth Device!');
+  UnableToWriteToDevice([String? message]) : super(message ?? 'Unable to write to Bluetooth Device!');
 }
 
 class UnableToDisconnectFromDevice extends BluetoothException {
-  UnableToDisconnectFromDevice([String? message])
-      : super(message ?? 'Unable to disconnect from Bluetooth Device!');
+  UnableToDisconnectFromDevice([String? message]) : super(message ?? 'Unable to disconnect from Bluetooth Device!');
 }

@@ -70,10 +70,8 @@ enum ServiceClass {
   const ServiceClass(this.name, this.bit);
 }
 
-Set<ServiceClass> getServiceClassFromCod(int cod) {
-  return ServiceClass.values
-      .where((serviceClass) => _isBitEnabled(cod, serviceClass.bit))
-      .toSet();
+Set<ServiceClass>? getServiceClassFromCod(int? cod) {
+  return cod == null ? null : ServiceClass.values.where((serviceClass) => _isBitEnabled(cod, serviceClass.bit)).toSet();
 }
 
 @immutable
@@ -83,7 +81,11 @@ abstract class DeviceClass<T extends MinorDeviceType> {
 
   const DeviceClass({required this.name, required this.minorClass});
 
-  static DeviceClass createFromCod(int cod) {
+  static DeviceClass createFromCod(int? cod) {
+    if (cod == null) {
+      return const UncategorizedDeviceType(minorClass: null);
+    }
+
     final int majorDeviceClass = _getBitsInRange(cod, 8, 12);
     final int minorDeviceClass = _getBitsInRange(cod, 2, 7);
 
@@ -131,8 +133,7 @@ T? getMinorDeviceClass<T extends MinorDeviceType>({
 }
 
 class MiscellaneousDeviceType extends DeviceClass {
-  const MiscellaneousDeviceType({required super.minorClass})
-      : super(name: 'Miscellaneous');
+  const MiscellaneousDeviceType({required super.minorClass}) : super(name: 'Miscellaneous');
 
   factory MiscellaneousDeviceType.fromMinorDevice(int minorDeviceTypeNumber) {
     return const MiscellaneousDeviceType(minorClass: null);
@@ -140,8 +141,7 @@ class MiscellaneousDeviceType extends DeviceClass {
 }
 
 class UncategorizedDeviceType extends DeviceClass {
-  const UncategorizedDeviceType({required super.minorClass})
-      : super(name: 'Miscellaneous');
+  const UncategorizedDeviceType({required super.minorClass}) : super(name: 'Miscellaneous');
 
   factory UncategorizedDeviceType.fromMinorDevice(int minorDeviceTypeNumber) {
     return const UncategorizedDeviceType(minorClass: null);
@@ -161,8 +161,7 @@ class UncategorizedDeviceType extends DeviceClass {
 // }
 
 class ComputerDeviceType extends DeviceClass<ComputerMinorDeviceType> {
-  const ComputerDeviceType({required super.minorClass})
-      : super(name: 'Computer');
+  const ComputerDeviceType({required super.minorClass}) : super(name: 'Computer');
 
   factory ComputerDeviceType.fromMinorDevice(int minorDeviceTypeNumber) {
     return ComputerDeviceType(
@@ -221,13 +220,10 @@ enum PhoneMinorDeviceType implements MinorDeviceType {
   const PhoneMinorDeviceType(this.number, this.name);
 }
 
-class LanNetworkAccessPointDeviceType
-    extends DeviceClass<LanNetworkAccessPointMinorDeviceType> {
-  const LanNetworkAccessPointDeviceType({required super.minorClass})
-      : super(name: 'LAN/Network Access Point');
+class LanNetworkAccessPointDeviceType extends DeviceClass<LanNetworkAccessPointMinorDeviceType> {
+  const LanNetworkAccessPointDeviceType({required super.minorClass}) : super(name: 'LAN/Network Access Point');
 
-  factory LanNetworkAccessPointDeviceType.fromMinorDevice(
-      int minorDeviceTypeNumber) {
+  factory LanNetworkAccessPointDeviceType.fromMinorDevice(int minorDeviceTypeNumber) {
     return LanNetworkAccessPointDeviceType(
       minorClass: getMinorDeviceClass(
         number: minorDeviceTypeNumber,
@@ -258,8 +254,7 @@ enum LanNetworkAccessPointMinorDeviceType implements MinorDeviceType {
 }
 
 class AudioVideoDeviceType extends DeviceClass<AudioVideoMinorDeviceType> {
-  const AudioVideoDeviceType({required super.minorClass})
-      : super(name: 'Audio/Video');
+  const AudioVideoDeviceType({required super.minorClass}) : super(name: 'Audio/Video');
 
   factory AudioVideoDeviceType.fromMinorDevice(int minorDeviceTypeNumber) {
     return AudioVideoDeviceType(
@@ -301,8 +296,7 @@ enum AudioVideoMinorDeviceType implements MinorDeviceType {
 }
 
 class PeripheralDeviceType extends DeviceClass<PeripheralMinorDeviceType> {
-  const PeripheralDeviceType({required super.minorClass})
-      : super(name: 'Peripheral');
+  const PeripheralDeviceType({required super.minorClass}) : super(name: 'Peripheral');
 
   factory PeripheralDeviceType.fromMinorDevice(int minorDeviceTypeNumber) {
     return PeripheralDeviceType(
@@ -314,7 +308,8 @@ class PeripheralDeviceType extends DeviceClass<PeripheralMinorDeviceType> {
   }
 }
 
-enum PeripheralMinorDeviceType implements MinorDeviceType { // TODO: fix
+enum PeripheralMinorDeviceType implements MinorDeviceType {
+  // TODO: fix
   uncategorized(0, 'Uncategorized'),
   joystick(1, 'Keyboard'),
   gamepad(2, 'Pointing Device'),
@@ -366,8 +361,7 @@ enum ImagingMinorDeviceType implements MinorDeviceType {
 }
 
 class WearableDeviceType extends DeviceClass<WearableMinorDeviceType> {
-  const WearableDeviceType({required super.minorClass})
-      : super(name: 'Wearable');
+  const WearableDeviceType({required super.minorClass}) : super(name: 'Wearable');
 
   factory WearableDeviceType.fromMinorDevice(int minorDeviceTypeNumber) {
     return WearableDeviceType(

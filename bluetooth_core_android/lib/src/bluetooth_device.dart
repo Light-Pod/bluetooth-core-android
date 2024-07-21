@@ -7,10 +7,16 @@ class BluetoothDevice {
   final String? alias;
   final DeviceType? type;
   final String address;
-  final int classOfDevice;
+  final int? classOfDevice;
   final BondState bondState;
-  final Set<ServiceClass> serviceClasses;
-  final DeviceClass deviceClass;
+  /// uuids does not start a service discovery procedure to retrieve the UUIDs
+  /// from the remote device. Instead, the local cached copy of the service
+  /// UUIDs are returned.
+  ///
+  /// Use fetchUuidsWithSdp if fresh UUIDs are desired. TODO
+  final Set<String>? uuids;
+  final Set<ServiceClass>? serviceClasses;
+  final DeviceClass? deviceClass;
 
   BluetoothDevice({
     required this.name,
@@ -19,6 +25,7 @@ class BluetoothDevice {
     required this.address,
     required this.classOfDevice,
     required this.bondState,
+    required this.uuids,
   })  : serviceClasses = getServiceClassFromCod(classOfDevice),
         deviceClass = DeviceClass.createFromCod(classOfDevice);
 
@@ -80,6 +87,7 @@ class BluetoothDevice {
       address: json['address'] as String,
       classOfDevice: json['classOfDevice'],
       bondState: convertToBondState(json['bondState']),
+      uuids: json['uuids'] == null ? null : Set.from(json['uuids']),
     );
   }
 
@@ -87,7 +95,7 @@ class BluetoothDevice {
   String toString() {
     // return 'BluetoothDevice{name: $name, alias: $alias, type: $type, address: $address, bondState: $bondState}';
     return 'BluetoothDevice{name: $name, alias: $alias, type: $type, address: $address,'
-        ' bluetoothClass: $classOfDevice, bonSate: $bondState, cod: $classOfDevice, deviceClass: ${deviceClass.name}}';
+        ' bluetoothClass: $classOfDevice, bonSate: $bondState, cod: $classOfDevice, deviceClass: ${deviceClass?.name}, uuids: $uuids}';
   }
 }
 
